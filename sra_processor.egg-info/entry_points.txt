@@ -1,0 +1,2 @@
+[console_scripts]
+sra-processor = sra_processor.cli:main

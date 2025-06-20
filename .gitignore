@@ -1,0 +1,10 @@
+# .gitignore
+out_test/
+*.log
+*.error.log
+*.pyc
+__pycache__/
+*.sra
+*.fastq
+*.fas
+*.gz

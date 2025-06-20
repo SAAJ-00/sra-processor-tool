@@ -1,0 +1,14 @@
+setup.py
+sra_processor/__init__.py
+sra_processor/cli.py
+sra_processor/config.py
+sra_processor/downloader.py
+sra_processor/exceptions.py
+sra_processor/trimmer.py
+sra_processor/utils.py
+sra_processor.egg-info/PKG-INFO
+sra_processor.egg-info/SOURCES.txt
+sra_processor.egg-info/dependency_links.txt
+sra_processor.egg-info/entry_points.txt
+sra_processor.egg-info/requires.txt
+sra_processor.egg-info/top_level.txt

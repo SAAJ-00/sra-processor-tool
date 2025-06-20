@@ -1,0 +1,19 @@
+# environment.yml
+name: sra_processor
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  # Python y librerías básicas
+  - python>=3.8
+  - pip
+  
+  # Herramientas bioinformáticas
+  - sra-tools
+  - fastp
+  - pigz
+  
+  # Dependencias Python (aunque la mayoría vienen con Python base)
+  - pathlib
+  - argparse
