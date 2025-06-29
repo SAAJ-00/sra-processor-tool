@@ -2,31 +2,108 @@ import subprocess
 import shutil
 from pathlib import Path
 from .exceptions import TrimmingError
+import logging
+
+logger = logging.getLogger(__name__)
 
 class FastpProcessor:
     def __init__(self, config):
         self.config = config
-        self._validate_fastp()
-
-    def _validate_fastp(self):
-        """Verifica que fastp esté instalado"""
+        self._validate_tools()
+    
+    def _validate_tools(self):
+        """Verifica que las herramientas necesarias estén instaladas"""
         if not shutil.which('fastp'):
-            raise EnvironmentError("fastp no encontrado en el PATH")
+            raise TrimmingError(tool='fastp', message="fastp no encontrado en el PATH")
+        if not shutil.which('fastplong'):
+            logger.warning("ADVERTENCIA: fastplong no encontrado. No se podrá procesar lecturas largas")
 
-    def process_paired_end(self, input_files, srr_id):
+    def _is_long_read(self, input_file):
+        """Determina si es una lectura larga basado en la longitud promedio"""
+        try:
+            with open(input_file, 'r') as f:
+                lengths = []
+                for _ in range(25):  # Muestra de 25 secuencias
+                    header = next(f, None)
+                    seq = next(f, None)
+                    plus = next(f, None)
+                    qual = next(f, None)
+                    if seq is None:
+                        break
+                    lengths.append(len(seq.strip()))
+                
+                if not lengths:
+                    return False
+                
+                avg_length = sum(lengths) / len(lengths)
+                return avg_length > 500  # Consideramos largas >500bp
+        except Exception as e:
+            logger.warning(f"Advertencia: No se pudo determinar tipo de lectura: {str(e)}")
+            return False
+
+    def _standardize_fastq_extensions(self, srr_id, output_dir, paired=False):
+        """Renombra archivos .fq o .fas a .fastq para compatibilidad con fastp"""
+        extensions = ['.fastq', '.fq', '.fas']
+        if paired:
+            for ext in extensions:
+                cand1 = output_dir / f"{srr_id}_1{ext}"
+                cand2 = output_dir / f"{srr_id}_2{ext}"
+                std1 = output_dir / f"{srr_id}_1.fastq"
+                std2 = output_dir / f"{srr_id}_2.fastq"
+                if cand1.exists() and cand2.exists():
+                    if ext != '.fastq':
+                        if std1.exists():
+                            std1.unlink()
+                        if std2.exists():
+                            std2.unlink()
+                        cand1.rename(std1)
+                        cand2.rename(std2)
+                    return std1, std2
+        else:
+            for ext in extensions:
+                cand = output_dir / f"{srr_id}{ext}"
+                std = output_dir / f"{srr_id}.fastq"
+                if cand.exists():
+                    if ext != '.fastq':
+                        if std.exists():
+                            std.unlink()
+                        cand.rename(std)
+                    return std,
+        return None
+
+    def process(self, input_files, srr_id):
+        """Procesa cualquier tipo de datos automáticamente"""
+        if len(input_files) == 1 and self._is_long_read(input_files[0]):
+            return self._process_long_read(input_files[0], srr_id)
+        elif len(input_files) == 2:
+            return self._process_paired_end(input_files, srr_id)
+        else:
+            return self._process_short_read(input_files[0], srr_id)
+
+    def _process_paired_end(self, input_files, srr_id):
         """Procesa archivos paired-end con fastp"""
         output_dir = self.config['output_dir'] / srr_id
         output_dir.mkdir(exist_ok=True)
         
-        out1 = output_dir / f"output_{srr_id}_1_paired.fastq.gz"
-        out2 = output_dir / f"output_{srr_id}_2_paired.fastq.gz"
-        report_html = output_dir / f"output_{srr_id}_fastp.html"
-        report_json = output_dir / f"output_{srr_id}_fastp.json"
+        out1 = output_dir / f"{srr_id}_1_trimmed.fastq.gz"
+        out2 = output_dir / f"{srr_id}_2_trimmed.fastq.gz"
+        report_html = output_dir / f"report_{srr_id}.html"
+        report_json = output_dir / f"report_{srr_id}.json"
+
+        if out1.exists() and out2.exists():
+            logger.info(f"Archivos de trimming paired-end ya existen para {srr_id}, omitiendo.")
+            return True
+
+        # Estandarizar extensiones antes de trimming
+        std_files = self._standardize_fastq_extensions(srr_id, output_dir, paired=True)
+        if not std_files:
+            logger.error(f"No se encontraron archivos FASTQ para {srr_id} antes del trimming.")
+            raise TrimmingError(tool='fastp', message=f"No se encontraron archivos FASTQ para {srr_id}")
 
         cmd = [
             'fastp',
-            '-i', str(input_files[0]),
-            '-I', str(input_files[1]),
+            '-i', str(std_files[0]),
+            '-I', str(std_files[1]),
             '-o', str(out1),
             '-O', str(out2),
             '-h', str(report_html),
@@ -48,17 +125,111 @@ class FastpProcessor:
         if self.config['trim_params']['disable_length_filtering']:
             cmd.append('--disable_length_filtering')
 
+        return self._run_trimming(cmd, list(std_files))
+
+    def _process_short_read(self, input_file, srr_id):
+        """Procesamiento para single-end cortas"""
+        output_dir = self.config['output_dir'] / srr_id
+        output_dir.mkdir(exist_ok=True)
+        out = output_dir / f"{srr_id}_trimmed.fastq.gz"
+        if out.exists():
+            logger.info(f"Archivo de trimming single-end ya existe para {srr_id}, omitiendo.")
+            return True
+
+        # Estandarizar extensiones antes de trimming
+        std_files = self._standardize_fastq_extensions(srr_id, output_dir, paired=False)
+        if not std_files:
+            logger.error(f"No se encontró archivo FASTQ para {srr_id} antes del trimming.")
+            raise TrimmingError(tool='fastp', message=f"No se encontró archivo FASTQ para {srr_id}")
+
+        cmd = [
+            'fastp',
+            '-i', str(std_files[0]),
+            '-o', str(out),
+            '-h', str(output_dir / f"report_{srr_id}.html"),
+            '-j', str(output_dir / f"report_{srr_id}.json"),
+            '-w', str(self.config['threads']),
+            '--qualified_quality_phred', str(self.config['trim_params']['quality_phred']),
+            '--length_required', str(self.config['trim_params']['min_length']),
+            '--cut_front',
+            '--cut_tail',
+            '--cut_window_size', str(self.config['trim_params']['cut_window_size']),
+            '--cut_mean_quality', str(self.config['trim_params']['cut_mean_quality'])
+        ]
+        
+        if self.config['trim_params']['disable_adapter_trimming']:
+            cmd.append('--disable_adapter_trimming')
+        if self.config['trim_params']['disable_quality_filtering']:
+            cmd.append('--disable_quality_filtering')
+        if self.config['trim_params']['disable_length_filtering']:
+            cmd.append('--disable_length_filtering')
+
+        return self._run_trimming(cmd, list(std_files))
+
+    def _process_long_read(self, input_file, srr_id):
+        """Procesamiento para lecturas largas (Nanopore/PacBio)"""
+        output_dir = self.config['output_dir'] / srr_id
+        output_dir.mkdir(exist_ok=True)
+        out = output_dir / f"{srr_id}_trimmed.fastq.gz"
+        report_html = output_dir / f"report_{srr_id}.html"
+        report_json = output_dir / f"report_{srr_id}.json"
+        if out.exists():
+            logger.info(f"Archivo de trimming long-read ya existe para {srr_id}, omitiendo.")
+            self._remove_empty_tmp(output_dir)
+            return True
+
+        cmd = [
+            'fastplong',
+            '-i', str(input_file),
+            '-o', str(out),
+            '-j', str(report_json),
+            '-h', str(report_html),
+            '--mean_qual', str(self.config['trim_params']['long_read_settings']['min_quality']),
+            '--length_required', str(self.config['trim_params']['long_read_settings']['min_length']),
+            '--thread', str(self.config['threads'])
+        ]
+
+        if self.config['trim_params']['long_read_settings']['disable_adapter_trimming']:
+            cmd.append('--disable_adapter_trimming')
+        if self.config['trim_params']['long_read_settings']['disable_quality_filtering']:
+            cmd.append('--disable_quality_filtering')
+        
+        result = self._run_trimming(cmd, [input_file])
+        self._remove_empty_tmp(output_dir)
+        
+        return result
+
+    def _run_trimming(self, cmd, input_files):
+        """Ejecuta el comando de trimming y maneja errores"""
         try:
-            subprocess.run(cmd, check=True, capture_output=True)
-            
+            subprocess.run(
+                cmd,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True
+            )
             if not self.config['keep_temp']:
                 self._clean_intermediates(input_files)
-                
+            # Eliminar tmp vacío después de trimming para todos los casos
+            if len(input_files) > 0:
+                output_dir = Path(input_files[0]).parent
+                self._remove_empty_tmp(output_dir)
             return True
         except subprocess.CalledProcessError as e:
-            raise TrimmingError(f"Error en fastp: {e.stderr.decode()}")
+            error_msg = e.stderr if isinstance(e.stderr, str) else e.stderr.decode()
+            raise TrimmingError(f"Error en {' '.join(cmd[:2])}: {error_msg}")
 
     def _clean_intermediates(self, input_files):
         """Elimina archivos intermedios"""
         for f in input_files:
-            Path(f).unlink(missing_ok=True)
+            try:
+                Path(f).unlink(missing_ok=True)
+            except Exception as e:
+                logger.warning(f"Advertencia: No se pudo eliminar {f}: {str(e)}")
+
+    def _remove_empty_tmp(self, output_dir):
+        tmp_dir = output_dir / 'tmp'
+        if tmp_dir.exists() and tmp_dir.is_dir() and not any(tmp_dir.iterdir()):
+            tmp_dir.rmdir()
+            

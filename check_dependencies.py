@@ -7,6 +7,7 @@ REQUIRED_TOOLS = {
     'prefetch': 'Herramienta de SRA Toolkit para descarga',
     'fasterq-dump': 'Herramienta de SRA Toolkit para conversión',
     'fastp': 'Herramienta para procesamiento de FASTQ',
+    'fastplong': 'Herramienta para procesamiento de lecturas largas',
     'pigz': 'Compresión paralela de archivos'
 }
 
@@ -22,7 +23,7 @@ def check_tools():
             print(f"- {tool}: {desc}", file=sys.stderr)
         
         print("\nPuedes instalarlas con:", file=sys.stderr)
-        print("conda install -c bioconda sra-tools fastp pigz", file=sys.stderr)
+        print("conda install -c bioconda sra-tools fastp fastplong pigz", file=sys.stderr)
         sys.exit(1)
     else:
         print("Todas las dependencias están instaladas correctamente")

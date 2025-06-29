@@ -9,7 +9,7 @@ setup(
         'pathlib',
         'argparse',
     ],
-    python_requires='>=3.6',
+    python_requires='>=3.8',
     entry_points={
         'console_scripts': [
             'sra-processor=sra_processor.cli:main',

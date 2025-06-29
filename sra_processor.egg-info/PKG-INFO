@@ -1,7 +1,7 @@
 Metadata-Version: 2.4
 Name: sra_processor
 Version: 0.1
-Requires-Python: >=3.6
+Requires-Python: >=3.8
 Requires-Dist: pathlib
 Requires-Dist: argparse
 Dynamic: requires-dist

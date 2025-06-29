@@ -12,6 +12,7 @@ dependencies:
   # Herramientas bioinformáticas
   - sra-tools
   - fastp
+  - fastplong
   - pigz
   
   # Dependencias Python (aunque la mayoría vienen con Python base)

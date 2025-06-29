@@ -2,6 +2,7 @@ setup.py
 sra_processor/__init__.py
 sra_processor/cli.py
 sra_processor/config.py
+sra_processor/config_logging.py
 sra_processor/downloader.py
 sra_processor/exceptions.py
 sra_processor/trimmer.py
