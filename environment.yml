@@ -17,4 +17,3 @@ dependencies:
   
   # Dependencias Python (aunque la mayoría vienen con Python base)
   - pathlib
-  - argparse
