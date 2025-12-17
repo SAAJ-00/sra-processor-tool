@@ -184,7 +184,8 @@ class SRADownloader:
                     logger.debug(f"Archivo SRA eliminado: {sra_file}")
                     # Intentar eliminar directorio del SRA si está vacío
                     sra_dir = sra_file.parent
-                    if sra_dir != output_dir and sra_dir.exists() and not any(sra_dir.iterdir()):
+                    # Comparar paths resueltos para evitar problemas con rutas relativas/absolutas
+                    if sra_dir.resolve() != output_dir.resolve() and sra_dir.exists() and not any(sra_dir.iterdir()):
                         sra_dir.rmdir()
                         logger.debug(f"Directorio SRA eliminado: {sra_dir}")
                 except Exception as e:

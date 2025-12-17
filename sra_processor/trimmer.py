@@ -33,8 +33,10 @@ class FastpProcessor:
             result_dir = self.config['output_dir'] / srr_id
         else:
             output_path = Path(output_dir)
+            # Usar solo el nombre del archivo para comparación segura
+            srr_name = Path(srr_id).name
             # Si el directorio ya termina con el srr_id, no duplicar
-            result_dir = output_path if output_path.name == srr_id else output_path / srr_id
+            result_dir = output_path if output_path.name == srr_name else output_path / srr_name
         
         result_dir.mkdir(parents=True, exist_ok=True)
         return result_dir

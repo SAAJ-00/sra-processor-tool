@@ -5,6 +5,8 @@ from typing import Literal, Optional, List, Tuple
 logger = logging.getLogger(__name__)
 
 # Constants
+# Note: .fas extension included for compatibility with some fasterq-dump outputs
+# that may use this extension, though it's typically used for FASTA files
 FASTQ_EXTENSIONS = ['.fastq', '.fq', '.fas']
 FASTQ_EXTENSIONS_COMPRESSED = ['.fastq.gz', '.fq.gz']
 ALL_FASTQ_EXTENSIONS = FASTQ_EXTENSIONS + FASTQ_EXTENSIONS_COMPRESSED
@@ -159,8 +161,8 @@ def detect_fastq_type(fastq_file: Path) -> Literal['paired', 'single', 'long']:
             # Buscar patrones _1 y _2 (más precisos usando sufijos)
             import re
             if re.search(r'_1[._]', name):
-                # Reemplazar solo la última ocurrencia de _1 antes de la extensión
-                partner_name = re.sub(r'_1([._])', r'_2\1', name)
+                # Usar función utilitaria para obtener nombre paired
+                partner_name = get_paired_filename(name)
                 partner = parent / partner_name
                 if partner.exists():
                     logger.debug(f"Detectado paired-end: encontrado archivo _2")
@@ -189,24 +191,41 @@ def find_fastq_files(directory: Path, srr_id: Optional[str] = None) -> List[Path
         logger.warning(f"Directorio no existe: {directory}")
         return []
     
-    # Build glob patterns from extensions
-    extensions = [f'*{ext}' for ext in ALL_FASTQ_EXTENSIONS]
     fastq_files = []
     
-    for ext in extensions:
+    for ext in ALL_FASTQ_EXTENSIONS:
         if srr_id:
-            # Buscar archivos específicos del SRR
-            pattern = f"{srr_id}*{ext[1:]}"  # Quitar el * del inicio
+            # Buscar archivos específicos del SRR con la extensión
+            pattern = f"{srr_id}*{ext}"
             fastq_files.extend(directory.glob(pattern))
         else:
             # Buscar todos los archivos con la extensión
-            fastq_files.extend(directory.glob(ext))
+            pattern = f"*{ext}"
+            fastq_files.extend(directory.glob(pattern))
     
     # Ordenar para tener consistencia (_1 antes de _2)
     fastq_files.sort()
     
     logger.debug(f"Encontrados {len(fastq_files)} archivos FASTQ en {directory}")
     return fastq_files
+
+
+def get_paired_filename(filename: str) -> str:
+    """
+    Convierte un nombre de archivo _1 a _2 para archivos paired-end
+    
+    Args:
+        filename: Nombre del archivo con _1
+    
+    Returns:
+        Nombre del archivo con _2
+    
+    Note:
+        Usa regex para reemplazar solo _1 seguido de . o _ para evitar
+        reemplazos incorrectos en nombres como 'sample_10_1.fastq'
+    """
+    import re
+    return re.sub(r'_1([._])', r'_2\1', filename)
 
 
 def detect_input_type(input_line: str) -> Tuple[str, str]:

@@ -5,7 +5,7 @@ import shutil
 from pathlib import Path
 from .downloader import SRADownloader
 from .trimmer import FastpProcessor
-from .utils import check_srr_status, detect_input_type, detect_fastq_type, find_fastq_files
+from .utils import check_srr_status, detect_input_type, detect_fastq_type, find_fastq_files, get_paired_filename
 from .config import DEFAULT_CONFIG
 from .exceptions import SRAProcessingError, UnsupportedDataTypeError
 import logging
@@ -150,8 +150,8 @@ def process_trim_fastq(fastq_path, config):
         # Para paired-end, buscar el archivo pareja
         import re
         if file_type == 'paired' or re.search(r'_1[._]', fastq_file.name):
-            # Buscar archivo _2 (reemplazar solo la última ocurrencia de _1 antes de extensión)
-            partner_name = re.sub(r'_1([._])', r'_2\1', fastq_file.name)
+            # Buscar archivo _2 usando función utilitaria
+            partner_name = get_paired_filename(fastq_file.name)
             partner_file = fastq_file.parent / partner_name
             
             if partner_file.exists():
