@@ -4,6 +4,12 @@ from typing import Literal, Optional, List, Tuple
 
 logger = logging.getLogger(__name__)
 
+# Constants
+FASTQ_EXTENSIONS = ['.fastq', '.fq', '.fas']
+FASTQ_EXTENSIONS_COMPRESSED = ['.fastq.gz', '.fq.gz']
+ALL_FASTQ_EXTENSIONS = FASTQ_EXTENSIONS + FASTQ_EXTENSIONS_COMPRESSED
+MIN_SRR_ID_LENGTH = 9  # Minimum length for valid SRR/ERR/DRR IDs
+
 def check_srr_status(srr_id: str, output_dir: Path) -> Literal['new', 'complete', 'fastq_ready', 'single_end', 'sra_downloaded', 'unknown']:
     """
     Verifica el estado de procesamiento de un SRR
@@ -43,10 +49,8 @@ def check_srr_status(srr_id: str, output_dir: Path) -> Literal['new', 'complete'
         return 'complete'
     
     # 2. Verificar archivos intermedios FASTQ
-    extensions = ['.fastq', '.fq', '.fas']
-    
     # Paired-end intermedio
-    for ext in extensions:
+    for ext in FASTQ_EXTENSIONS:
         paired_files = [
             srr_dir / f"{srr_id}_1{ext}",
             srr_dir / f"{srr_id}_2{ext}"
@@ -56,7 +60,7 @@ def check_srr_status(srr_id: str, output_dir: Path) -> Literal['new', 'complete'
             return 'fastq_ready'
     
     # Single-end intermedio
-    for ext in extensions:
+    for ext in FASTQ_EXTENSIONS:
         single_file = srr_dir / f"{srr_id}{ext}"
         if single_file.exists():
             logger.debug(f"Estado para {srr_id}: single_end")
@@ -100,8 +104,7 @@ def get_fastq_files(srr_id: str, output_dir: Path) -> Optional[list[Path]]:
             return [single_file]
         
         # Buscar archivos intermedios
-        extensions = ['.fastq', '.fq', '.fas']
-        for ext in extensions:
+        for ext in FASTQ_EXTENSIONS:
             paired_intermediate = [
                 srr_dir / f"{srr_id}_1{ext}",
                 srr_dir / f"{srr_id}_2{ext}"
@@ -153,15 +156,15 @@ def detect_fastq_type(fastq_file: Path) -> Literal['paired', 'single', 'long']:
             parent = fastq_file.parent
             name = fastq_file.name
             
-            # Buscar patrones _1 y _2
-            if '_1.' in name or '_1_' in name:
-                partner = None
-                for suffix in ['.fastq', '.fq', '.fas', '.fastq.gz', '.fq.gz']:
-                    partner_name = name.replace('_1.', '_2.').replace('_1_', '_2_')
-                    partner = parent / partner_name
-                    if partner.exists():
-                        logger.debug(f"Detectado paired-end: encontrado archivo _2")
-                        return 'paired'
+            # Buscar patrones _1 y _2 (más precisos usando sufijos)
+            import re
+            if re.search(r'_1[._]', name):
+                # Reemplazar solo la última ocurrencia de _1 antes de la extensión
+                partner_name = re.sub(r'_1([._])', r'_2\1', name)
+                partner = parent / partner_name
+                if partner.exists():
+                    logger.debug(f"Detectado paired-end: encontrado archivo _2")
+                    return 'paired'
             
             logger.debug(f"Detectado single-end: longitud promedio {avg_length:.1f}bp")
             return 'single'
@@ -186,7 +189,8 @@ def find_fastq_files(directory: Path, srr_id: Optional[str] = None) -> List[Path
         logger.warning(f"Directorio no existe: {directory}")
         return []
     
-    extensions = ['*.fastq', '*.fq', '*.fas', '*.fastq.gz', '*.fq.gz']
+    # Build glob patterns from extensions
+    extensions = [f'*{ext}' for ext in ALL_FASTQ_EXTENSIONS]
     fastq_files = []
     
     for ext in extensions:
@@ -217,12 +221,15 @@ def detect_input_type(input_line: str) -> Tuple[str, str]:
     """
     input_line = input_line.strip()
     
-    # Verificar si es una ruta a archivo
-    if '/' in input_line or '\\' in input_line or input_line.endswith(('.fastq', '.fq', '.fas', '.fastq.gz', '.fq.gz')):
+    # Verificar si es una ruta a archivo (tiene separadores de ruta o extensión FASTQ)
+    has_path_sep = '/' in input_line or '\\' in input_line
+    has_fastq_ext = any(input_line.endswith(ext) for ext in ALL_FASTQ_EXTENSIONS)
+    
+    if has_path_sep or has_fastq_ext:
         return 'fastq', input_line
     
     # Verificar si es un SRR ID (formato SRR/ERR/DRR seguido de números)
-    if input_line.upper().startswith(('SRR', 'ERR', 'DRR')) and len(input_line) >= 9:
+    if input_line.upper().startswith(('SRR', 'ERR', 'DRR')) and len(input_line) >= MIN_SRR_ID_LENGTH:
         return 'srr', input_line
     
     # Por defecto, asumir que es un SRR ID

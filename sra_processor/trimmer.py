@@ -18,6 +18,27 @@ class FastpProcessor:
         if not shutil.which('fastplong'):
             logger.warning("ADVERTENCIA: fastplong no encontrado. No se podrá procesar lecturas largas")
 
+    def _get_output_dir(self, srr_id, output_dir=None):
+        """
+        Determina el directorio de salida apropiado
+        
+        Args:
+            srr_id: ID del SRR o nombre base
+            output_dir: Directorio de salida opcional
+        
+        Returns:
+            Path object al directorio de salida
+        """
+        if output_dir is None:
+            result_dir = self.config['output_dir'] / srr_id
+        else:
+            output_path = Path(output_dir)
+            # Si el directorio ya termina con el srr_id, no duplicar
+            result_dir = output_path if output_path.name == srr_id else output_path / srr_id
+        
+        result_dir.mkdir(parents=True, exist_ok=True)
+        return result_dir
+    
     def _is_long_read(self, input_file):
         """Determina si es una lectura larga basado en la longitud promedio"""
         try:
@@ -89,11 +110,7 @@ class FastpProcessor:
 
     def _process_paired_end(self, input_files, srr_id, output_dir=None):
         """Procesa archivos paired-end con fastp"""
-        if output_dir is None:
-            output_dir = self.config['output_dir'] / srr_id
-        else:
-            output_dir = Path(output_dir) / srr_id if not Path(output_dir).name == srr_id else Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = self._get_output_dir(srr_id, output_dir)
         
         out1 = output_dir / f"{srr_id}_1_trimmed.fastq.gz"
         out2 = output_dir / f"{srr_id}_2_trimmed.fastq.gz"
@@ -145,11 +162,7 @@ class FastpProcessor:
 
     def _process_short_read(self, input_file, srr_id, output_dir=None):
         """Procesamiento para single-end cortas"""
-        if output_dir is None:
-            output_dir = self.config['output_dir'] / srr_id
-        else:
-            output_dir = Path(output_dir) / srr_id if not Path(output_dir).name == srr_id else Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = self._get_output_dir(srr_id, output_dir)
         
         out = output_dir / f"{srr_id}_trimmed.fastq.gz"
         
@@ -195,11 +208,7 @@ class FastpProcessor:
 
     def _process_long_read(self, input_file, srr_id, output_dir=None):
         """Procesamiento para lecturas largas (Nanopore/PacBio)"""
-        if output_dir is None:
-            output_dir = self.config['output_dir'] / srr_id
-        else:
-            output_dir = Path(output_dir) / srr_id if not Path(output_dir).name == srr_id else Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = self._get_output_dir(srr_id, output_dir)
         
         out = output_dir / f"{srr_id}_trimmed.fastq.gz"
         report_html = output_dir / f"report_{srr_id}.html"

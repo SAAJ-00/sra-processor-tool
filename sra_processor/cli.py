@@ -148,9 +148,10 @@ def process_trim_fastq(fastq_path, config):
         print(f"Procesando {fastq_file.name} (tipo: {file_type})...")
         
         # Para paired-end, buscar el archivo pareja
-        if file_type == 'paired' or '_1' in fastq_file.name:
-            # Buscar archivo _2
-            partner_name = fastq_file.name.replace('_1.', '_2.').replace('_1_', '_2_')
+        import re
+        if file_type == 'paired' or re.search(r'_1[._]', fastq_file.name):
+            # Buscar archivo _2 (reemplazar solo la última ocurrencia de _1 antes de extensión)
+            partner_name = re.sub(r'_1([._])', r'_2\1', fastq_file.name)
             partner_file = fastq_file.parent / partner_name
             
             if partner_file.exists():

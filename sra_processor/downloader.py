@@ -60,10 +60,21 @@ class SRADownloader:
         Retorna: (tipo_datos, lista_archivos)
         """
         output_dir = self.config['output_dir'] / srr_id
-        sra_file = output_dir / srr_id / f"{srr_id}.sra"
         
-        if not sra_file.exists():
-            error_msg = f"Archivo SRA no encontrado para {srr_id} en {sra_file}"
+        # Intentar ubicaciones comunes para archivo SRA
+        sra_locations = [
+            output_dir / srr_id / f"{srr_id}.sra",  # Estructura típica de prefetch
+            output_dir / f"{srr_id}.sra",  # Alternativa: SRA en directorio principal
+        ]
+        
+        sra_file = None
+        for location in sra_locations:
+            if location.exists():
+                sra_file = location
+                break
+        
+        if sra_file is None:
+            error_msg = f"Archivo SRA no encontrado para {srr_id} en ninguna ubicación esperada"
             logger.error(error_msg)
             raise ConversionError(error_msg)
         
@@ -115,6 +126,24 @@ class SRADownloader:
     def convert_to_fastq(self, srr_id, sra_dir):
         """Convierte SRA a FASTQ usando fasterq-dump (método público)"""
         logger.debug(f"Iniciando conversión a FASTQ para {srr_id}...")
+        
+        # Buscar archivo SRA en ubicaciones comunes
+        sra_locations = [
+            sra_dir / srr_id / f"{srr_id}.sra",  # Estructura típica de prefetch
+            sra_dir / f"{srr_id}.sra",  # Alternativa: SRA en directorio principal
+        ]
+        
+        sra_file = None
+        for location in sra_locations:
+            if location.exists():
+                sra_file = location
+                break
+        
+        if sra_file is None:
+            error_msg = f"Archivo SRA no encontrado para conversión: {srr_id}"
+            logger.error(error_msg)
+            raise ConversionError(error_msg)
+        
         cmd = [
             'fasterq-dump',
             '--outdir', str(sra_dir),
@@ -123,7 +152,7 @@ class SRADownloader:
             '--threads', str(self.config['threads']),
             '--split-files',
             '--skip-technical',  # Nuevo parámetro recomendado
-            str(sra_dir / srr_id / f"{srr_id}.sra")
+            str(sra_file)
         ]
 
         try:
@@ -142,18 +171,24 @@ class SRADownloader:
 
     def _clean_sra_file(self, srr_id, output_dir):
         """Elimina el archivo .sra después de conversión"""
-        sra_file = output_dir / srr_id / f"{srr_id}.sra"
-        if sra_file.exists():
-            try:
-                sra_file.unlink()
-                logger.debug(f"Archivo SRA eliminado: {sra_file}")
-                # Intentar eliminar directorio del SRA si está vacío
-                sra_dir = output_dir / srr_id
-                if sra_dir.exists() and not any(sra_dir.iterdir()):
-                    sra_dir.rmdir()
-                    logger.debug(f"Directorio SRA eliminado: {sra_dir}")
-            except Exception as e:
-                logger.warning(f"No se pudo eliminar archivo SRA: {str(e)}")
+        # Buscar SRA en ubicaciones comunes
+        sra_locations = [
+            output_dir / srr_id / f"{srr_id}.sra",
+            output_dir / f"{srr_id}.sra",
+        ]
+        
+        for sra_file in sra_locations:
+            if sra_file.exists():
+                try:
+                    sra_file.unlink()
+                    logger.debug(f"Archivo SRA eliminado: {sra_file}")
+                    # Intentar eliminar directorio del SRA si está vacío
+                    sra_dir = sra_file.parent
+                    if sra_dir != output_dir and sra_dir.exists() and not any(sra_dir.iterdir()):
+                        sra_dir.rmdir()
+                        logger.debug(f"Directorio SRA eliminado: {sra_dir}")
+                except Exception as e:
+                    logger.warning(f"No se pudo eliminar archivo SRA: {str(e)}")
 
     def _validate_output(self, srr_id, sra_dir):
         """Valida los archivos FASTQ generados y determina el tipo de datos"""
