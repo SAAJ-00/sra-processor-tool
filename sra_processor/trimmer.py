@@ -18,6 +18,29 @@ class FastpProcessor:
         if not shutil.which('fastplong'):
             logger.warning("ADVERTENCIA: fastplong no encontrado. No se podrá procesar lecturas largas")
 
+    def _get_output_dir(self, srr_id, output_dir=None):
+        """
+        Determina el directorio de salida apropiado
+        
+        Args:
+            srr_id: ID del SRR o nombre base
+            output_dir: Directorio de salida opcional
+        
+        Returns:
+            Path object al directorio de salida
+        """
+        if output_dir is None:
+            result_dir = self.config['output_dir'] / srr_id
+        else:
+            output_path = Path(output_dir)
+            # Usar solo el nombre del archivo para comparación segura
+            srr_name = Path(srr_id).name
+            # Si el directorio ya termina con el srr_id, no duplicar
+            result_dir = output_path if output_path.name == srr_name else output_path / srr_name
+        
+        result_dir.mkdir(parents=True, exist_ok=True)
+        return result_dir
+    
     def _is_long_read(self, input_file):
         """Determina si es una lectura larga basado en la longitud promedio"""
         try:
@@ -71,34 +94,46 @@ class FastpProcessor:
                     return std,
         return None
 
-    def process(self, input_files, srr_id):
-        """Procesa cualquier tipo de datos automáticamente"""
+    def process(self, input_files, srr_id, output_dir=None):
+        """
+        Procesa cualquier tipo de datos automáticamente
+        
+        Args:
+            input_files: Lista de archivos FASTQ a procesar
+            srr_id: Identificador del SRR o nombre base para archivos de salida
+            output_dir: Directorio de salida opcional (usa config si no se especifica)
+        """
         if len(input_files) == 1 and self._is_long_read(input_files[0]):
-            return self._process_long_read(input_files[0], srr_id)
+            return self._process_long_read(input_files[0], srr_id, output_dir)
         elif len(input_files) == 2:
-            return self._process_paired_end(input_files, srr_id)
+            return self._process_paired_end(input_files, srr_id, output_dir)
         else:
-            return self._process_short_read(input_files[0], srr_id)
+            return self._process_short_read(input_files[0], srr_id, output_dir)
 
-    def _process_paired_end(self, input_files, srr_id):
+    def _process_paired_end(self, input_files, srr_id, output_dir=None):
         """Procesa archivos paired-end con fastp"""
-        output_dir = self.config['output_dir'] / srr_id
-        output_dir.mkdir(exist_ok=True)
+        output_dir = self._get_output_dir(srr_id, output_dir)
         
         out1 = output_dir / f"{srr_id}_1_trimmed.fastq.gz"
         out2 = output_dir / f"{srr_id}_2_trimmed.fastq.gz"
         report_html = output_dir / f"report_{srr_id}.html"
         report_json = output_dir / f"report_{srr_id}.json"
 
-        if out1.exists() and out2.exists():
+        # Verificar si se debe sobrescribir
+        force_overwrite = self.config.get('force_overwrite', False)
+        if out1.exists() and out2.exists() and not force_overwrite:
             logger.info(f"Archivos de trimming paired-end ya existen para {srr_id}, omitiendo.")
             return True
 
-        # Estandarizar extensiones antes de trimming
-        std_files = self._standardize_fastq_extensions(srr_id, output_dir, paired=True)
-        if not std_files:
-            logger.error(f"No se encontraron archivos FASTQ para {srr_id} antes del trimming.")
-            raise TrimmingError(tool='fastp', message=f"No se encontraron archivos FASTQ para {srr_id}")
+        # Para archivos externos (rutas absolutas), usar directamente
+        if Path(input_files[0]).is_absolute() and Path(input_files[0]).exists():
+            std_files = input_files
+        else:
+            # Estandarizar extensiones antes de trimming
+            std_files = self._standardize_fastq_extensions(srr_id, output_dir, paired=True)
+            if not std_files:
+                logger.error(f"No se encontraron archivos FASTQ para {srr_id} antes del trimming.")
+                raise TrimmingError(tool='fastp', message=f"No se encontraron archivos FASTQ para {srr_id}")
 
         cmd = [
             'fastp',
@@ -127,20 +162,27 @@ class FastpProcessor:
 
         return self._run_trimming(cmd, list(std_files))
 
-    def _process_short_read(self, input_file, srr_id):
+    def _process_short_read(self, input_file, srr_id, output_dir=None):
         """Procesamiento para single-end cortas"""
-        output_dir = self.config['output_dir'] / srr_id
-        output_dir.mkdir(exist_ok=True)
+        output_dir = self._get_output_dir(srr_id, output_dir)
+        
         out = output_dir / f"{srr_id}_trimmed.fastq.gz"
-        if out.exists():
+        
+        # Verificar si se debe sobrescribir
+        force_overwrite = self.config.get('force_overwrite', False)
+        if out.exists() and not force_overwrite:
             logger.info(f"Archivo de trimming single-end ya existe para {srr_id}, omitiendo.")
             return True
 
-        # Estandarizar extensiones antes de trimming
-        std_files = self._standardize_fastq_extensions(srr_id, output_dir, paired=False)
-        if not std_files:
-            logger.error(f"No se encontró archivo FASTQ para {srr_id} antes del trimming.")
-            raise TrimmingError(tool='fastp', message=f"No se encontró archivo FASTQ para {srr_id}")
+        # Para archivos externos (rutas absolutas), usar directamente
+        if Path(input_file).is_absolute() and Path(input_file).exists():
+            std_files = (input_file,)
+        else:
+            # Estandarizar extensiones antes de trimming
+            std_files = self._standardize_fastq_extensions(srr_id, output_dir, paired=False)
+            if not std_files:
+                logger.error(f"No se encontró archivo FASTQ para {srr_id} antes del trimming.")
+                raise TrimmingError(tool='fastp', message=f"No se encontró archivo FASTQ para {srr_id}")
 
         cmd = [
             'fastp',
@@ -166,14 +208,17 @@ class FastpProcessor:
 
         return self._run_trimming(cmd, list(std_files))
 
-    def _process_long_read(self, input_file, srr_id):
+    def _process_long_read(self, input_file, srr_id, output_dir=None):
         """Procesamiento para lecturas largas (Nanopore/PacBio)"""
-        output_dir = self.config['output_dir'] / srr_id
-        output_dir.mkdir(exist_ok=True)
+        output_dir = self._get_output_dir(srr_id, output_dir)
+        
         out = output_dir / f"{srr_id}_trimmed.fastq.gz"
         report_html = output_dir / f"report_{srr_id}.html"
         report_json = output_dir / f"report_{srr_id}.json"
-        if out.exists():
+        
+        # Verificar si se debe sobrescribir
+        force_overwrite = self.config.get('force_overwrite', False)
+        if out.exists() and not force_overwrite:
             logger.info(f"Archivo de trimming long-read ya existe para {srr_id}, omitiendo.")
             self._remove_empty_tmp(output_dir)
             return True

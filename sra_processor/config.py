@@ -6,6 +6,9 @@ DEFAULT_CONFIG = {
     'max_size': '30G',
     'output_dir': Path('.').absolute(),
     'keep_temp': False,
+    'keep_sra': False,  # Nueva opción: mantener archivos .sra después de conversión
+    'force_overwrite': False,  # Nueva opción: sobrescribir archivos existentes
+    'input_type': 'auto',  # Nueva opción: tipo de input (auto/srr/fastq)
     'trim_params': {
         # Parámetros para lecturas cortas
         'quality_phred': 30,
