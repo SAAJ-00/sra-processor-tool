@@ -1,4 +1,5 @@
 import logging
+import gzip
 from pathlib import Path
 from typing import Literal, Optional, List, Tuple
 
@@ -132,7 +133,14 @@ def detect_fastq_type(fastq_file: Path) -> Literal['paired', 'single', 'long']:
         Tipo detectado: 'paired', 'single', o 'long'
     """
     try:
-        with open(fastq_file, 'r') as f:
+        # Determine if file is compressed
+        is_compressed = str(fastq_file).endswith('.gz')
+        
+        # Open file with appropriate method
+        open_func = gzip.open if is_compressed else open
+        mode = 'rt' if is_compressed else 'r'
+        
+        with open_func(fastq_file, mode) as f:
             lengths = []
             for _ in range(25):  # Muestra de 25 secuencias
                 header = next(f, None)
