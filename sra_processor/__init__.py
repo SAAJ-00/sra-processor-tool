@@ -3,7 +3,7 @@
 from .config_logging import setup_logging
 import logging
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 # Configura logging básico si no está configurado
 logging.basicConfig(
@@ -12,4 +12,5 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
 logger.info(f"Inicializando sra_processor v{__version__}")
