@@ -13,6 +13,24 @@ FASTQ_EXTENSIONS_COMPRESSED = ['.fastq.gz', '.fq.gz']
 ALL_FASTQ_EXTENSIONS = FASTQ_EXTENSIONS + FASTQ_EXTENSIONS_COMPRESSED
 MIN_SRR_ID_LENGTH = 9  # Minimum length for valid SRR/ERR/DRR IDs
 
+def open_fastq_file(fastq_file: Path):
+    """
+    Open a FASTQ file, handling both compressed and uncompressed formats
+    
+    Args:
+        fastq_file: Ruta al archivo FASTQ (comprimido o no)
+    
+    Returns:
+        File handle opened in text mode
+    """
+    # Check if file is compressed based on known compressed extensions
+    is_compressed = any(str(fastq_file).endswith(ext) for ext in FASTQ_EXTENSIONS_COMPRESSED)
+    
+    if is_compressed:
+        return gzip.open(fastq_file, 'rt')
+    else:
+        return open(fastq_file, 'r')
+
 def check_srr_status(srr_id: str, output_dir: Path) -> Literal['new', 'complete', 'fastq_ready', 'single_end', 'sra_downloaded', 'unknown']:
     """
     Verifica el estado de procesamiento de un SRR
@@ -133,14 +151,7 @@ def detect_fastq_type(fastq_file: Path) -> Literal['paired', 'single', 'long']:
         Tipo detectado: 'paired', 'single', o 'long'
     """
     try:
-        # Determine if file is compressed
-        is_compressed = str(fastq_file).endswith('.gz')
-        
-        # Open file with appropriate method
-        open_func = gzip.open if is_compressed else open
-        mode = 'rt' if is_compressed else 'r'
-        
-        with open_func(fastq_file, mode) as f:
+        with open_fastq_file(fastq_file) as f:
             lengths = []
             for _ in range(25):  # Muestra de 25 secuencias
                 header = next(f, None)

@@ -1,8 +1,8 @@
 import subprocess
 import shutil
-import gzip
 from pathlib import Path
 from .exceptions import TrimmingError
+from .utils import open_fastq_file
 import logging
 
 logger = logging.getLogger(__name__)
@@ -45,14 +45,7 @@ class FastpProcessor:
     def _is_long_read(self, input_file):
         """Determina si es una lectura larga basado en la longitud promedio"""
         try:
-            # Determine if file is compressed
-            is_compressed = str(input_file).endswith('.gz')
-            
-            # Open file with appropriate method
-            open_func = gzip.open if is_compressed else open
-            mode = 'rt' if is_compressed else 'r'
-            
-            with open_func(input_file, mode) as f:
+            with open_fastq_file(input_file) as f:
                 lengths = []
                 for _ in range(25):  # Muestra de 25 secuencias
                     header = next(f, None)
